@@ -2,6 +2,7 @@
   "name": "@jarvis/daemon",
   "version": "0.1.0",
   "description": "JARVIS — Always-on AI daemon. Agent harness, vault memory, permission engine.",
+  "license": "MIT OR Apache-2.0",
   "module": "src/index.ts",
   "type": "module",
   "engines": {

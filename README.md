@@ -90,4 +90,14 @@ Issues and PRs welcome. This started as one person's tool and is shared as a fou
 
 ## License
 
-[Apache License 2.0](LICENSE) — permissive and build-friendly: use it, fork it, extend it, and ship what you make (commercial use included). It also carries a **patent grant**, so everyone building on top is protected. Just keep the license/notices. Provided as-is, no warranty.
+**Dual-licensed — take your pick.** Project J.A.R.V.I.S. is licensed under **either**:
+
+- [Apache License 2.0](LICENSE-APACHE) (includes an explicit patent grant), **or**
+- [MIT License](LICENSE-MIT) (dead simple)
+
+**at your option.** `SPDX-License-Identifier: MIT OR Apache-2.0`
+
+Build on it, fork it, extend it, ship it (commercial use included) under whichever fits your project. Just keep the notices. Provided as-is, no warranty.
+
+> Why both? It's the standard for foundations (e.g. the Rust ecosystem): MIT is the simplest/most familiar, Apache-2.0 adds patent protection — offering both lets the widest range of projects build on this one.
+
