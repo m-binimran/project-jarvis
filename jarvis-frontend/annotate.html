@@ -1,0 +1,102 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>JARVIS — screen overlay</title>
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+  const DAEMON = "http://127.0.0.1:9101";
+  const cv = document.getElementById("c");
+  const ctx = cv.getContext("2d");
+  function resize() { cv.width = window.innerWidth; cv.height = window.innerHeight; }
+  resize(); window.addEventListener("resize", resize);
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+  function label(x, y, text, color) {
+    if (!text) return;
+    ctx.font = "600 15px system-ui, sans-serif";
+    const pad = 7, w = ctx.measureText(text).width + pad * 2;
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(2,6,15,0.88)"; roundRect(x, y - 22, w, 24, 6); ctx.fill();
+    ctx.fillStyle = color; ctx.fillText(text, x + pad, y - 5);
+  }
+  function arrow(x1, y1, x2, y2, color) {
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 4; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    const a = Math.atan2(y2 - y1, x2 - x1), h = 18;
+    ctx.beginPath(); ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - h * Math.cos(a - 0.45), y2 - h * Math.sin(a - 0.45));
+    ctx.lineTo(x2 - h * Math.cos(a + 0.45), y2 - h * Math.sin(a + 0.45));
+    ctx.closePath(); ctx.fill();
+  }
+  function draw(shapes) {
+    const W = cv.width, H = cv.height;
+    ctx.clearRect(0, 0, W, H);
+    for (const s of shapes) {
+      const color = s.color || "#0ABAB5";
+      ctx.save();
+      ctx.shadowColor = color; ctx.shadowBlur = 14;
+      const x = s.x * W, y = s.y * H;
+      if (s.type === "rect") {
+        // Surrounding highlight — DOTTED (the general "look around here" area).
+        const w = (s.w || 0.1) * W, h = (s.h || 0.06) * H;
+        ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.setLineDash([9, 7]);
+        ctx.strokeRect(x, y, w, h);
+        ctx.setLineDash([]);
+        label(x, y - 4, s.text, color);
+      } else if (s.type === "circle") {
+        // The exact CLICK POINT — a solid ("whole") ring + a filled centre dot.
+        const r = (s.w || 0.05) * Math.min(W, H);
+        ctx.strokeStyle = color; ctx.lineWidth = 4; ctx.setLineDash([]);
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+        label(x - r, y - r - 6, s.text, color);
+      } else if (s.type === "arrow") {
+        const x2 = (s.x2 != null ? s.x2 : s.x) * W, y2 = (s.y2 != null ? s.y2 : s.y) * H;
+        arrow(x, y, x2, y2, color);
+        label(x2, y2 - 8, s.text, color);
+      } else if (s.type === "label") {
+        label(x, y, s.text, color);
+      }
+      ctx.restore();
+    }
+  }
+
+  // Adaptive polling: snappy (350ms) while something is on screen, slow (1500ms)
+  // when idle. This overlay runs 24/7, so idling at 1500ms cuts its background
+  // network + CPU by ~75% without hurting responsiveness when guidance fires.
+  const FAST = 350, SLOW = 1500;
+  let lastVersion = -1, idleStreak = 0;
+  async function poll() {
+    let hasShapes = false;
+    try {
+      const r = await fetch(DAEMON + "/api/annotate", { cache: "no-store" });
+      const d = await r.json();
+      const shapes = d.shapes || [];
+      hasShapes = shapes.length > 0;
+      // Only repaint when something actually changed (saves redraws while idle).
+      if (d.version !== lastVersion || hasShapes) { draw(shapes); lastVersion = d.version; }
+    } catch (_) {
+      ctx.clearRect(0, 0, cv.width, cv.height);
+    }
+    idleStreak = hasShapes ? 0 : Math.min(idleStreak + 1, 10);
+    setTimeout(poll, idleStreak >= 3 ? SLOW : FAST);
+  }
+  poll();
+</script>
+</body>
+</html>

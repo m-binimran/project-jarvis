@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Talk to JARVIS</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    background:#02060f;color:#E8F0F0;
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+    display:flex;flex-direction:column;overflow:hidden;font-size:14px;
+  }
+  header{
+    display:flex;align-items:center;gap:8px;
+    padding:10px 14px;border-bottom:1px solid #101a30;flex-shrink:0;
+    -webkit-app-region:drag;
+  }
+  header .dot{width:8px;height:8px;border-radius:50%;background:#0ABAB5;box-shadow:0 0 8px #0ABAB5}
+  header b{font-size:12px;letter-spacing:.16em;text-transform:uppercase;font-weight:600}
+  header .sp{flex:1}
+  header button{-webkit-app-region:no-drag;background:none;border:0;color:#5a7898;cursor:pointer;font-size:14px;padding:2px 6px;border-radius:6px}
+  header button:hover{color:#E8F0F0;background:#0a1224}
+  header button.on{color:#0ABAB5}
+  #log{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+  .msg{max-width:88%;padding:9px 12px;border-radius:14px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word}
+  .me{align-self:flex-end;background:#0a8a86;color:#001616;border-bottom-right-radius:4px}
+  .jv{align-self:flex-start;background:#0a1224;border:1px solid #101a30;border-bottom-left-radius:4px}
+  .jv.thinking{color:#5a7898}
+  .dots{display:inline-flex;gap:5px;align-items:center;padding:2px 0}
+  .jv.thinking .tlabel{margin-left:8px;font-size:12px;color:#5a7898;font-style:italic;vertical-align:middle}
+  .dots i{width:7px;height:7px;border-radius:50%;background:#0ABAB5;display:inline-block;animation:bnc 1.1s infinite ease-in-out}
+  .dots i:nth-child(2){animation-delay:.18s}
+  .dots i:nth-child(3){animation-delay:.36s}
+  @keyframes bnc{0%,80%,100%{transform:translateY(0);opacity:.35}40%{transform:translateY(-5px);opacity:1}}
+  form{display:flex;gap:8px;padding:10px;border-top:1px solid #101a30;flex-shrink:0}
+  #box{flex:1;background:#0a1224;border:1px solid #1a2a4a;color:#E8F0F0;padding:10px 12px;border-radius:10px;font:inherit;outline:none}
+  #box:focus{border-color:#0ABAB5}
+  #send{background:#0ABAB5;color:#001616;border:0;border-radius:10px;padding:0 16px;font-weight:700;cursor:pointer}
+  #send:disabled{opacity:.5;cursor:default}
+  ::-webkit-scrollbar{width:7px}::-webkit-scrollbar-thumb{background:#1a2a4a;border-radius:6px}
+  .sys{align-self:center;font-size:11px;color:#5a7898;font-style:italic;text-align:center;padding:2px 8px}
+  .vbar{display:flex;align-items:center;gap:7px;padding:5px 14px;border-bottom:1px solid #101a30;font-size:11px;color:#9fb4cc;flex-shrink:0;background:#060c18}
+  .vbar #vstate{font-size:10px;line-height:1}
+  header button#mic.on{color:#0ABAB5}
+</style>
+</head>
+<body>
+  <header>
+    <span class="dot"></span><b>Jarvis</b>
+    <span class="sp"></span>
+    <button id="mic" title="Hands-free voice — click, then say 'Hey Jarvis'">🎙️</button>
+    <button id="voice" class="on" title="Spoken replies on/off">🔊</button>
+  </header>
+  <div id="vbar" class="vbar" hidden><span id="vstate">●</span> <span id="vtext"></span></div>
+  <div id="log">
+    <div class="msg jv">Hello. I'm JARVIS. What can I do for you?</div>
+  </div>
+  <form id="f">
+    <input id="box" placeholder="Type a message…" autocomplete="off" autofocus />
+    <button id="send" type="submit">Send</button>
+  </form>
+
+<script>
+  const DAEMON = "http://127.0.0.1:9101";
+  let history = [];
+  try { history = JSON.parse(localStorage.getItem("jarvis_quick") || "[]"); } catch (_) {}
+  function saveHist() { try { localStorage.setItem("jarvis_quick", JSON.stringify(history.slice(-60))); } catch (_) {} }
+  let currentAudio = null;
+  const log = document.getElementById("log");
+  const box = document.getElementById("box");
+  const sendBtn = document.getElementById("send");
+  const voiceBtn = document.getElementById("voice");
+  let voiceOn = true;
+  voiceBtn.onclick = () => { voiceOn = !voiceOn; voiceBtn.classList.toggle("on", voiceOn); if (!voiceOn) speechSynthesis.cancel(); };
+
+  // ── Routing — "talk to Hormozi" reroutes the conversation to that advisor ──
+  let advisors = [];
+  fetch(`${DAEMON}/api/advisors`).then(r => r.json()).then(d => { advisors = d.advisors || []; }).catch(() => {});
+  let activeTarget = { kind: "jarvis", id: null, name: "JARVIS" };
+  const headBadge = document.querySelector("header b");
+  function setTarget(t) { activeTarget = t; if (headBadge) headBadge.textContent = t.name; }
+  function detectRoute(text) {
+    const t = text.toLowerCase().trim().replace(/[.?!]+$/, "");
+    if (/\b(?:talk to|back to|switch to|speak to|return to)\s+jarvis\b/.test(t) || t === "jarvis") return { kind: "jarvis", id: null, name: "JARVIS" };
+    const m = t.match(/\b(?:talk to|speak to|switch to|connect me to|let me talk to|i want to talk to|put me through to)\s+(.+)$/);
+    if (m) {
+      const q = m[1].trim();
+      const adv = advisors.find(a => { const n = a.name.toLowerCase(); return n.includes(q) || n.split(/\s+/).some(w => w.length > 2 && (q.includes(w) || w.includes(q))); });
+      if (adv) return { kind: "advisor", id: adv.id, name: adv.name };
+    }
+    return null;
+  }
+  function addSystem(text) { const d = document.createElement("div"); d.className = "sys"; d.textContent = text; log.appendChild(d); log.scrollTop = log.scrollHeight; }
+
+  function add(text, who) {
+    const d = document.createElement("div");
+    d.className = "msg " + who;
+    d.textContent = text;
+    log.appendChild(d);
+    log.scrollTop = log.scrollHeight;
+    return d;
+  }
+
+  // Restore the saved conversation on open
+  history.forEach(m => add(m.text, m.who));
+
+  function pickVoice() {
+    const vs = speechSynthesis.getVoices();
+    const find = (re) => vs.find(v => re.test(v.name));
+    return find(/Ryan|Thomas|Guy|Davis|Tony|Andrew|Christopher|Eric|Brian|Steffan/i)  // Windows neural (Natural) male
+        || find(/Natural|Online/i)                                                     // any neural voice — far better quality
+        || find(/Google UK English Male/i)
+        || find(/David|Mark|George/i)                                                  // older robotic SAPI male
+        || find(/\bmale\b/i)
+        || vs.find(v => !/zira|hazel|susan|samantha|victoria|female|aria|jenny/i.test(v.name))
+        || vs[0] || null;
+  }
+  function endSpeak() { if (window.__voiceMute) window.__voiceMute(false); }
+  async function speak(text) {
+    if (!voiceOn || !text) return;
+    speechSynthesis.cancel();
+    if (currentAudio) { try { currentAudio.pause(); } catch (_) {} currentAudio = null; }
+    // Mute the mic while JARVIS talks, so it never hears (and replies to) its own voice.
+    if (window.__voiceMute) window.__voiceMute(true);
+    const safety = setTimeout(endSpeak, 30000);
+    // Free Edge neural voice (British male) via the daemon — far better than the built-in voice.
+    try {
+      const res = await fetch(`${DAEMON}/api/tts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+      if (res.ok) {
+        const blob = await res.blob();
+        if (blob.size > 0) {
+          currentAudio = new Audio(URL.createObjectURL(blob));
+          currentAudio.onended = () => { clearTimeout(safety); endSpeak(); };
+          currentAudio.onerror = () => { clearTimeout(safety); endSpeak(); };
+          await currentAudio.play(); return;
+        }
+      }
+    } catch (_) {}
+    // Fallback — the robotic built-in voice (only if Edge TTS is unreachable)
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.0; u.pitch = 0.95;
+    const v = pickVoice(); if (v) u.voice = v;
+    u.onend = () => { clearTimeout(safety); endSpeak(); };
+    u.onerror = () => { clearTimeout(safety); endSpeak(); };
+    speechSynthesis.speak(u);
+  }
+
+  async function ask(text) {
+    // Routing command? ("talk to Hormozi" / "talk to JARVIS") — reroute, don't send as a message.
+    const route = detectRoute(text);
+    if (route) {
+      box.value = "";
+      if (route.kind === activeTarget.kind && route.id === activeTarget.id) addSystem(`Already talking to ${route.name}.`);
+      else { setTarget(route); addSystem(`→ Now talking to ${route.name}.` + (route.kind === "advisor" ? `  Say "talk to JARVIS" to come back.` : "")); }
+      return;
+    }
+    add(text, "me");
+    history.push({ who: "me", text }); saveHist();
+    box.value = ""; sendBtn.disabled = true;
+    const bubble = add("", "jv thinking");
+    bubble.innerHTML = '<span class="dots"><i></i><i></i><i></i></span><span class="tlabel">JARVIS is thinking…</span>';
+
+    let target = "", shown = 0, finished = false, started = false;
+    // Typewriter — reveal the reply a few characters at a time so it "types" out.
+    const tw = setInterval(() => {
+      if (shown < target.length) {
+        if (!started) { started = true; bubble.classList.remove("thinking"); bubble.textContent = ""; }
+        shown = Math.min(target.length, shown + 2);
+        bubble.textContent = target.slice(0, shown);
+        log.scrollTop = log.scrollHeight;
+      } else if (finished) {
+        clearInterval(tw);
+        if (target) { speak(target); history.push({ who: "jv", text: target }); saveHist(); }
+        else { bubble.classList.remove("thinking"); bubble.textContent = "(no response — is the daemon running?)"; }
+        sendBtn.disabled = false; box.focus();
+      }
+    }, 16);
+
+    try {
+      const url = activeTarget.kind === "advisor" ? `${DAEMON}/api/advisors/${activeTarget.id}/ask` : `${DAEMON}/api/chat`;
+      const payload = activeTarget.kind === "advisor" ? { question: text } : { message: text, agentId: "jarvis" };
+      const res = await fetch(url, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok || !res.body) throw new Error("HTTP " + res.status);
+      const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n"); buf = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const evt = JSON.parse(line.slice(6));
+            if (evt.type === "delta" && evt.content) { target += evt.content; }
+            if (evt.type === "done") { target = (evt.result && evt.result.output) || target; }
+            if (evt.type === "error") { target = "⚠ " + evt.message; }
+          } catch (_) {}
+        }
+      }
+    } catch (e) {
+      target = "⚠ Can't reach JARVIS. Make sure it's running. (" + e.message + ")";
+    } finally {
+      finished = true;
+    }
+  }
+
+  document.getElementById("f").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const t = box.value.trim();
+    if (t) ask(t);
+  });
+  if (typeof speechSynthesis !== "undefined") speechSynthesis.onvoiceschanged = () => {};
+  window.jarvisAsk = ask;   // let the voice module hand spoken commands to the talk box
+</script>
+<script type="module">
+  // "Hey Jarvis" hands-free voice (offline STT). See voice.js.
+  import { start, stop, onVoice, setMuted, voice } from "./voice.js";
+  window.__voiceMute = setMuted;                       // talk box mutes mic while JARVIS speaks
+  const micBtn = document.getElementById("mic");
+  const vbar   = document.getElementById("vbar");
+  const vstate = document.getElementById("vstate");
+  const vtext  = document.getElementById("vtext");
+  const COLORS = { idle:"#0ABAB5", awake:"#ffcc00", load:"#5a7898", off:"#5a7898", error:"#ff6b6b", setup:"#ffaa44" };
+  function show(state, text) { vbar.hidden = false; vstate.style.color = COLORS[state] || "#5a7898"; if (text != null) vtext.textContent = text; }
+  onVoice({
+    status:  (state, text) => { show(state, text); micBtn.classList.toggle("on", voice.listening); micBtn.textContent = voice.awake ? "🎤" : "🎙️"; },
+    partial: (p) => { if (p) { vbar.hidden = false; vtext.textContent = "“" + p + "”"; } },
+    command: (c) => { vtext.textContent = "“" + c + "”"; if (window.jarvisAsk) window.jarvisAsk(c); },
+  });
+  micBtn.onclick = async () => {
+    if (voice.listening) stop();
+    else { show("load", "Starting voice…"); await start(); }
+  };
+</script>
+</body>
+</html>

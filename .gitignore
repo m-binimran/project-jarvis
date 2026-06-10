@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+out/
+.vite/
+*.tsbuildinfo
+
+# Logs
+*.log
+*.err
+logs/
+
+# Secrets & local config — NEVER commit these
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.json
+
+# Local AI / vault data (lives outside the repo, but ignore just in case)
+.jarvis/
+*.db
+*.sqlite
+*.sqlite3
+
+# Downloaded voice model (~40MB, fetched at setup — see README)
+jarvis-frontend/models/*.tar.gz
+jarvis-frontend/models/vosk-*/
+
+# Personal / session notes — keep these private
+SESSION_MEMORY*.md
+OFFER-OUTREACH.md
+README-TESTER.md
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

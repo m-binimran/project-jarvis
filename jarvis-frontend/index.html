@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>JARVIS — Desktop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html,body,#root{height:100%}
+  body{
+    font-family:"Space Grotesk",ui-sans-serif,system-ui,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    font-size:13px;
+    line-height:1.45;
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+  }
+  button,input,textarea,select{font:inherit;color:inherit;background:none;border:0;outline:0}
+  button{cursor:default}
+  ::selection{background:var(--primary);color:var(--on-gold)}
+
+  /* mode tokens */
+  :root,
+  [data-mode="basic"]{
+    --bg:#f7f5ef;
+    --surface:#ffffff;
+    --surface-2:#f1ede3;
+    --border:#ebe5d6;
+    --border-2:#d8ccb0;
+    --primary:#9C7B3D;
+    --primary-soft:#f3eacf;
+    --primary-glow:rgba(156,123,61,.22);
+    --accent:#C9A84C;
+    --accent-soft:#f6eccd;
+    --text:#2a2620;
+    --subtext:#9a9082;
+    --muted:#b8aea0;
+    --ok:#7a8a4a;
+    --warn:#c9a84c;
+    --bad:#b04444;
+    --grid:rgba(156,123,61,.05);
+    --shadow-soft:0 1px 0 var(--border);
+    --gold-grad:linear-gradient(135deg,#e6cf90 0%,#b89544 24%,#9c7b3d 52%,#c9a84c 78%,#efd998 100%);
+    --gold-grad-soft:linear-gradient(180deg,#f7ead0 0%,#f1dfb0 100%);
+    --on-gold:#2a2620;
+    --radius:10px;
+    --radius-sm:6px;
+    --radius-lg:14px;
+    --orb-hue:42;
+  }
+  [data-mode="enterprise"]{
+    --bg:#02060f;
+    --surface:#070c1a;
+    --surface-2:#0a1224;
+    --border:#101a30;
+    --border-2:#1a2a4a;
+    --primary:#0ABAB5;
+    --primary-soft:#062826;
+    --primary-glow:rgba(10,186,181,.28);
+    --accent:#1a4fff;
+    --accent-soft:#0b1a3a;
+    --text:#E8F0F0;
+    --subtext:#5a7898;
+    --muted:#7a96b6;
+    --ok:#0ABAB5;
+    --warn:#C9A84C;
+    --bad:#d34a4a;
+    --grid:rgba(10,186,181,.04);
+    --gold-grad:linear-gradient(135deg,#34e1dc 0%,#0ABAB5 40%,#0a8a86 70%,#34e1dc 100%);
+    --gold-grad-soft:linear-gradient(180deg,#0a8a86 0%,#062826 100%);
+    --on-gold:#001616;
+    --radius:10px;
+    --radius-sm:6px;
+    --radius-lg:14px;
+    --orb-hue:188;
+  }
+
+  /* scrollbars */
+  ::-webkit-scrollbar{width:6px;height:6px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:6px}
+  ::-webkit-scrollbar-thumb:hover{background:var(--muted)}
+
+  /* card surface — softer panel for chrome */
+  .card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+  }
+  .card-lg{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius-lg);
+  }
+
+  /* utilities */
+  .mono{font-family:"JetBrains Mono",ui-monospace,monospace}
+  .upper{text-transform:uppercase;letter-spacing:.12em}
+
+  /* tweaks panel override — adapt to current mode */
+  .twk-panel{
+    background:color-mix(in oklab, var(--surface) 92%, transparent) !important;
+    color:var(--text) !important;
+    border:1px solid var(--border-2) !important;
+    border-radius:var(--radius) !important;
+    font-family:"Space Grotesk",sans-serif !important;
+    box-shadow:0 10px 30px rgba(0,0,0,.18) !important;
+  }
+  .twk-panel *{color:var(--text)}
+  .twk-lbl,.twk-val{color:var(--muted) !important}
+  .twk-sect{color:var(--subtext) !important;border-color:var(--border) !important}
+  .twk-hd b{color:var(--text) !important}
+
+  /* shared focus */
+  .focus-ring:focus-visible{box-shadow:0 0 0 1px var(--primary)}
+
+  /* metallic gold surfaces */
+  .gold{
+    background:var(--gold-grad);
+    color:var(--on-gold);
+    background-size:200% 200%;
+    border:1px solid rgba(0,0,0,.08);
+  }
+  [data-mode="enterprise"] .gold{border-color:rgba(255,255,255,.08)}
+  .gold-text{
+    background:var(--gold-grad);
+    -webkit-background-clip:text;
+    background-clip:text;
+    color:transparent;
+  }
+  .gold-soft{
+    background:var(--gold-grad-soft);
+    color:var(--on-gold);
+    border:1px solid var(--border-2);
+  }
+
+  /* drop zone */
+  .dropzone{
+    border:1.5px dashed var(--border-2);
+    color:var(--subtext);
+    background:transparent;
+    transition:background .12s, border-color .12s, color .12s;
+  }
+  .dropzone.over{
+    border-color:var(--primary);
+    background:var(--primary-soft);
+    color:var(--text);
+  }
+  [data-dragging="true"] .dropzone-overlay{opacity:1;pointer-events:auto}
+  .dropzone-overlay{opacity:0;pointer-events:none;transition:opacity .12s}
+
+  /* popover */
+  .popover{
+    background:var(--surface);
+    border:1px solid var(--border-2);
+    border-radius:var(--radius);
+    box-shadow:0 8px 24px rgba(0,0,0,.12);
+  }
+
+  /* tiny pulse for active agents */
+  @keyframes nodePulse{
+    0%,100%{box-shadow:0 0 0 0 var(--primary-glow)}
+    50%{box-shadow:0 0 0 8px transparent}
+  }
+  @keyframes blink{0%,49%{opacity:1}50%,100%{opacity:.3}}
+  @keyframes scan{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+  @keyframes typing{0%,80%,100%{opacity:.25}40%{opacity:1}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes spinRev{to{transform:rotate(-360deg)}}
+  @keyframes orbBreath{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
+  @keyframes orbAura{0%,100%{opacity:.5}50%{opacity:.9}}
+  @keyframes flipIn{from{transform:rotateY(90deg);opacity:0}to{transform:rotateY(0);opacity:1}}
+  /* Orb "wake / thinking" entrance — spins up, overshoots, settles, so the orb
+     reads as coming alive to think rather than just sitting there. */
+  @keyframes orbWakeIn{
+    0%{transform:rotate(-210deg) scale(.5);opacity:0;filter:blur(7px)}
+    55%{opacity:1;filter:blur(0)}
+    78%{transform:rotate(12deg) scale(1.06)}
+    100%{transform:rotate(0) scale(1);opacity:1;filter:blur(0)}
+  }
+
+  /* sidebar resize handle */
+  .sb-resizer:hover,
+  div:active > .sb-resizer{background:var(--primary) !important}
+</style>
+</head>
+<body data-mode="enterprise">
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="icons.jsx"></script>
+<script type="text/babel" src="data.jsx"></script>
+<script type="text/babel" src="graph.jsx"></script>
+<script type="text/babel" src="sidebar.jsx"></script>
+<script type="text/babel" src="chat.jsx"></script>
+<script type="text/babel" src="orb.jsx"></script>
+<script type="text/babel" src="onboarding.jsx"></script>
+<script type="text/babel" src="app.jsx"></script>
+<script type="module">
+  // Bridge the offline Vosk voice engine to the (Babel-compiled) orb via window.JarvisVoice.
+  import { pttStart, pttStop } from "./voice.js";
+  window.JarvisVoice = { pttStart, pttStop };
+</script>
+</body>
+</html>

@@ -1,0 +1,37 @@
+{
+  "name": "@jarvis/daemon",
+  "version": "0.1.0",
+  "description": "JARVIS — Always-on AI daemon. Agent harness, vault memory, permission engine.",
+  "module": "src/index.ts",
+  "type": "module",
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun --hot run src/index.ts",
+    "start:node": "node --experimental-strip-types --experimental-vm-modules src/index.ts",
+    "dev:node": "node --watch --experimental-strip-types src/index.ts",
+    "db:init": "bun run src/vault/schema.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "@hono/zod-validator": "^0.4.3",
+    "@slack/socket-mode": "^2.0.7",
+    "@slack/web-api": "^7.16.0",
+    "better-sqlite3": "^12.10.0",
+    "hono": "^4.7.7",
+    "jose": "^5.9.6",
+    "keytar": "^7.9.0",
+    "msedge-tts": "^2.0.5",
+    "playwright": "^1.60.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/bun": "latest",
+    "typescript": "^5.8.3"
+  }
+}
