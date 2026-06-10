@@ -4,6 +4,8 @@
 
 *Just A Rather Very Intelligent System.*
 
+> **Built to be a foundation.** JARVIS isn't just an app — it's a clean, working **base for building your own AI agent or harness**. Fork it, keep the parts you want (the multi-provider LLM layer, the agent/workforce engine, free voice I/O, the MCP tool router, the screen overlay), and build your own features on top. No framework lock-in, no vendor lock-in.
+
 JARVIS is a local-first AI assistant for solo founders, builders, and tinkerers. You bring your own model API key (NVIDIA, Google, OpenAI, Anthropic, or a local Ollama), and JARVIS gives you a voice-driven orb, an always-on "pill," a multi-agent workforce, screen guidance, and Slack integration — all running on your machine. **Your data and your keys never leave your computer.**
 
 > ⚠️ **Naming note:** "JARVIS" is famously associated with the Marvel franchise. This project is an independent, non-commercial open-source tool and is not affiliated with or endorsed by Marvel/Disney. If you fork it for public or commercial use, consider choosing your own name.
@@ -71,10 +73,21 @@ JARVIS speaks the OpenAI-compatible chat API plus Google Gemini and Anthropic, s
 - **Google Gemini**, **OpenAI**, **Anthropic** — paid, faster/sharper
 - **Ollama** — fully local, fully free
 
+## Built to build on
+
+JARVIS is designed so you can rip out, replace, or extend any layer. The main seams:
+
+- **Models** — `jarvis-daemon/src/llm/` speaks an OpenAI-compatible interface. Add a provider by dropping in one adapter; the manager handles fallback/routing.
+- **Tools** — `jarvis-daemon/src/mcp/` is a connector router. Register a connector with a few tools and every agent can call them.
+- **Agents** — `jarvis-daemon/src/agents/` defines the CEO → department-lead → specialist workforce. Add your own agents/departments, or wire a different orchestration entirely.
+- **Voice & UI** — voice in (`jarvis-frontend/voice.js`) and out (`/api/tts`) are swappable; the orb (`orb.jsx`) and the Electron overlay are independent front-ends talking to the same daemon over localhost.
+
+Start from this base, keep what's useful, and build your own harness on top.
+
 ## Contributing
 
-Issues and PRs welcome. This started as one person's tool and is shared in the hope it's useful — expect rough edges.
+Issues and PRs welcome. This started as one person's tool and is shared as a foundation for others to build on — expect rough edges, and bring your own.
 
 ## License
 
-[MIT](LICENSE) — do what you like, no warranty.
+[Apache License 2.0](LICENSE) — permissive and build-friendly: use it, fork it, extend it, and ship what you make (commercial use included). It also carries a **patent grant**, so everyone building on top is protected. Just keep the license/notices. Provided as-is, no warranty.
