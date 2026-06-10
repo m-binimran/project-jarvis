@@ -26,9 +26,11 @@ Three independent parts that talk to each other over localhost:
 
 | Part | Folder | Stack | Port |
 |------|--------|-------|------|
-| **Daemon** (the brain) | `jarvis-daemon` | Node + Hono, SQLite vault | `9101` |
-| **Frontend** (the orb UI) | `jarvis-frontend` | Static HTML + in-browser React/Babel | `3020` |
-| **Overlay** (the pill + screen drawing) | `jarvis-overlay` | Electron (electron-forge + Vite) | — |
+| **Daemon** — the base/engine | `jarvis-daemon` | Node + Hono, SQLite vault | `9101` |
+| Orb web UI *(example client)* | `examples/orb-ui` | Static HTML + in-browser React/Babel | `3020` |
+| Desktop overlay *(example client)* | `examples/overlay` | Electron (electron-forge + Vite) | — |
+
+**The base is `jarvis-daemon`** — the brain + agent harness + tool router + security + memory + HTTP API. The UIs under [`examples/`](examples) are *reference clients* built on that API; swap them for your own.
 
 ## Quick start
 
@@ -40,12 +42,12 @@ cd jarvis-daemon
 npm install
 node --experimental-strip-types src/index.ts      # serves http://127.0.0.1:9101
 
-# 2. The orb UI (in a second terminal)
-cd jarvis-frontend
+# 2. (optional) the orb web UI — an example client, in a second terminal
+cd examples/orb-ui
 node serve.js                                       # serves http://127.0.0.1:3020
 
-# 3. The pill + screen overlay (in a third terminal)
-cd jarvis-overlay
+# 3. (optional) the desktop pill + screen overlay — an example client
+cd examples/overlay
 npm install
 npm start                                           # launches the Electron pill
 ```
@@ -57,7 +59,7 @@ Then open the orb, go to **Settings**, and paste in **one** model API key (a fre
 Offline speech-to-text needs the small Vosk English model. It is **not** bundled (it's ~40 MB). Download it once:
 
 ```bash
-# from jarvis-frontend/
+# from examples/orb-ui/
 mkdir -p models
 curl -L -o models/vosk-model-small-en-us-0.15.tar.gz \
   https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.tar.gz
@@ -80,7 +82,8 @@ JARVIS is designed so you can rip out, replace, or extend any layer. The main se
 - **Models** — `jarvis-daemon/src/llm/` speaks an OpenAI-compatible interface. Add a provider by dropping in one adapter; the manager handles fallback/routing.
 - **Tools** — `jarvis-daemon/src/mcp/` is a connector router. Register a connector with a few tools and every agent can call them.
 - **Agents** — `jarvis-daemon/src/agents/` defines the CEO → department-lead → specialist workforce. Add your own agents/departments, or wire a different orchestration entirely.
-- **Voice & UI** — voice in (`jarvis-frontend/voice.js`) and out (`/api/tts`) are swappable; the orb (`orb.jsx`) and the Electron overlay are independent front-ends talking to the same daemon over localhost.
+- **Autonomous loops** — `jarvis-daemon/src/agents/loop.ts` runs an agent toward a goal on its own, bounded by hard guardrails (step cap, token budget, cancel; risky actions blocked unattended). Drive it via `/api/loop/*`.
+- **Clients** — everything in [`examples/`](examples) (the orb web UI, the desktop overlay) talks to the base purely over its HTTP API. Build your own UI/client the same way.
 
 Start from this base, keep what's useful, and build your own harness on top.
 

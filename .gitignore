@@ -28,8 +28,8 @@ secrets.json
 *.sqlite3
 
 # Downloaded voice model (~40MB, fetched at setup — see README)
-jarvis-frontend/models/*.tar.gz
-jarvis-frontend/models/vosk-*/
+**/models/*.tar.gz
+**/models/vosk-*/
 
 # Personal / session notes — keep these private
 SESSION_MEMORY*.md
