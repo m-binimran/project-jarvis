@@ -1,6 +1,8 @@
-# Project JARVIS
+# Project J.A.R.V.I.S.
 
 **A personal AI operating system that runs on your own computer, with your own AI key.**
+
+*Just A Rather Very Intelligent System.*
 
 JARVIS is a local-first AI assistant for solo founders, builders, and tinkerers. You bring your own model API key (NVIDIA, Google, OpenAI, Anthropic, or a local Ollama), and JARVIS gives you a voice-driven orb, an always-on "pill," a multi-agent workforce, screen guidance, and Slack integration — all running on your machine. **Your data and your keys never leave your computer.**
 
