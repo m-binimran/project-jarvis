@@ -157,6 +157,14 @@ export class MCPRouter {
 import { readFileSync, writeFileSync, appendFileSync, readdirSync, unlinkSync } from "node:fs";
 import { runInSandbox, isShellEnabled } from "../sandbox.ts";
 
+/** Validate a required string param at the tool boundary (no "undefined" paths). */
+function reqStr(value: unknown, field: string, tool: string): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`${tool}: '${field}' is required and must be a non-empty string.`);
+  }
+  return value;
+}
+
 export const filesystemConnector: MCPConnector = {
   id: "filesystem",
   name: "File System",
@@ -168,7 +176,7 @@ export const filesystemConnector: MCPConnector = {
       category: "read_file",
       inputSchema: { path: { type: "string" } },
       async handler({ path }) {
-        const content = readFileSync(String(path), "utf-8");
+        const content = readFileSync(reqStr(path, "path", "read_file"), "utf-8");
         return { content };
       },
     },
@@ -178,7 +186,7 @@ export const filesystemConnector: MCPConnector = {
       category: "write_file",
       inputSchema: { path: { type: "string" }, content: { type: "string" } },
       async handler({ path, content }) {
-        writeFileSync(String(path), String(content), "utf-8");
+        writeFileSync(reqStr(path, "path", "write_file"), reqStr(content, "content", "write_file"), "utf-8");
         return { success: true };
       },
     },
@@ -188,7 +196,7 @@ export const filesystemConnector: MCPConnector = {
       category: "write_file",
       inputSchema: { path: { type: "string" }, content: { type: "string" } },
       async handler({ path, content }) {
-        appendFileSync(String(path), String(content), "utf-8");
+        appendFileSync(reqStr(path, "path", "append_file"), reqStr(content, "content", "append_file"), "utf-8");
         return { success: true };
       },
     },
@@ -198,7 +206,7 @@ export const filesystemConnector: MCPConnector = {
       category: "read_file",
       inputSchema: { path: { type: "string" } },
       async handler({ path }) {
-        const items = readdirSync(String(path), { withFileTypes: true });
+        const items = readdirSync(reqStr(path, "path", "list_dir"), { withFileTypes: true });
         return {
           items: items.map(i => ({ name: i.name, isDir: i.isDirectory() })),
         };
@@ -210,8 +218,9 @@ export const filesystemConnector: MCPConnector = {
       category: "delete_file",
       inputSchema: { path: { type: "string" } },
       async handler({ path }) {
-        unlinkSync(String(path));
-        return { success: true, deleted: path };
+        const p = reqStr(path, "path", "delete_file");
+        unlinkSync(p);
+        return { success: true, deleted: p };
       },
     },
   ],
@@ -282,7 +291,8 @@ export const execConnector: MCPConnector = {
         if (!isShellEnabled()) {
           throw new Error("[SANDBOX] Shell execution is disabled by default. Enable it explicitly (setShellEnabled / JARVIS_ENABLE_SHELL=1); it only ever runs inside a Docker sandbox.");
         }
-        const res = runInSandbox(String(command), (args as string[]).map(String));
+        const cmd = reqStr(command, "command", "run_shell");
+        const res = runInSandbox(cmd, (Array.isArray(args) ? args : []).map(String));
         if (res.error) throw new Error(`[SANDBOX] ${res.error}`);
         return { stdout: res.stdout, stderr: res.stderr, exitCode: res.exitCode, sandboxed: true };
       },
