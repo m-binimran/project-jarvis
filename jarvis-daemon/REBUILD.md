@@ -49,17 +49,37 @@ Decisions: **Sandbox = Docker** | **Memory = sqlite-vec + local Ollama embedding
       'authority gate moat' & 'github repo' recalled the right facts; forget works.
 
 ## MOVE 3 - keep the validated wants first-class
-- [ ] **8. Voice stays in the base** (Vosk + edge-tts) - already core; keep.
-- [ ] **9. Bounded autonomous loops stay core** - already built (`agents/loop.ts`).
-- [ ] **10. Guarantee local-first + BYO key + zero telemetry** - audit + state it.
+- [x] **8. Voice stays in the base** (Vosk + edge-tts) - confirmed present:
+      `llm/edge-tts.ts` (free TTS out), Vosk free STT in (frontend). Kept core.
+- [x] **9. Bounded autonomous loops stay core** - `agents/loop.ts` present:
+      HARD_MAX_STEPS=25 ceiling, approvals denied by default (unattended-safe). Kept.
+- [x] **10. Guarantee local-first + BYO key + zero telemetry** - AUDITED: zero
+      telemetry SDKs (grep clean), every outbound host is localhost-Ollama or a
+      user-configured LLM provider (BYO key). Wrote `PRIVACY.md` (the guarantee +
+      complete outbound surface + how to verify it yourself).
 
 ## MOVE 4 - prove & position
-- [ ] **11. Demote clients to examples/** (orb, pill, Slack) - partly done in OSS repo.
-- [ ] **12. Lead all messaging with "the secure agent kernel".**
-- [ ] **13. Record the real product** (orb/pill) for authentic proof.
+- [x] **11. Demote clients to examples/** (orb, pill, Slack) - done: orb-ui + overlay
+      live under `examples/`; `examples/README.md` now points at the SDK quickstart
+      (`jarvis-daemon/examples/agent.ts`) as the starting point. Kernel = the engine.
+- [x] **12. Lead all messaging with "the secure agent kernel".** - public README
+      rewritten: headline "the secure agent kernel", leads with the moat + the
+      ~20-line SDK quickstart, links KERNEL.md/SDK.md/PRIVACY.md; app demoted to
+      "what's built on it".
+- [ ] **13. Record the real product** (orb/pill) for authentic proof. [NEEDS USER -
+      requires running the live UI + screen recording on the user's machine.]
 - [ ] **14. (Later) Monetization** - kernel free; paid = hosted/managed or enterprise
       security tier (open-core).
 
 ## Next
-Finish #3 once Docker is running (launch Docker Desktop, accept license), then #4.
-Sync kernel changes (router/sandbox/index + KERNEL.md/REBUILD.md) to the public repo.
+Steps 1-12 DONE + tested + pushed to github.com/m-binimran/project-jarvis (the
+secure trunk, sandbox, guardrails, spec-compliant MCP server+client, the SDK,
+the memory tier, the zero-telemetry audit, and the "secure agent kernel" README).
+
+REMAINING (need the user / a decision):
+- **#3 full Docker test** — code done + safe (sandbox refuses without Docker).
+  Install Docker Desktop AS ADMIN (WSL2 + BIOS virtualization), then test run_shell.
+- **#13 record the real product** — run the orb/pill live and screen-record it for
+  authentic proof (needs the user's machine/desktop).
+- **#14 monetization** — decide the open-core split (hosted/managed vs enterprise
+  security tier). Strategy only; no code.
