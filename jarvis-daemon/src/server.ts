@@ -57,6 +57,7 @@ import { beginWork, endWork, isBusy } from "./activity.ts";
 import { startLoop, stopLoop, getLoop, listLoops } from "./agents/loop.ts";
 import { isDryRun, setDryRun } from "./guardrails.ts";
 import { isShellEnabled, dockerAvailable } from "./sandbox.ts";
+import { handleMcpRequest, type JsonRpcRequest } from "./mcp/protocol.ts";
 import { configureProviders } from "./config/loader.ts";
 import { startSlack, refreshAgentApps } from "./slack/bot.ts";
 import { preTaskCheck } from "./agents/pre-task.ts";
@@ -770,6 +771,24 @@ export function buildServer(deps: {
     } catch (err) {
       return c.json({ success: false, error: String(err) }, 400);
     }
+  });
+
+  // Spec-compliant MCP endpoint (JSON-RPC 2.0). Any MCP client can speak to the
+  // kernel here — and every tools/call still passes the secure chokepoint.
+  app.post("/mcp", async c => {
+    let body: JsonRpcRequest | JsonRpcRequest[];
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }, 400);
+    }
+    // Support JSON-RPC batches.
+    if (Array.isArray(body)) {
+      const responses = (await Promise.all(body.map(m => handleMcpRequest(mcp, m)))).filter(Boolean);
+      return c.json(responses);
+    }
+    const res = await handleMcpRequest(mcp, body);
+    return res ? c.json(res) : c.body(null, 204); // notifications → no content
   });
 
   // ── Sidecar ───────────────────────────────────────────────────────────────

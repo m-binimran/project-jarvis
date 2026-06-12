@@ -24,8 +24,22 @@ Decisions: **Sandbox = Docker** | **Memory = sqlite-vec + local Ollama embedding
       off; 45 rapid read_file -> 8 pass then 37 blocked by the rate limiter.
 
 ## MOVE 2 - make it forkable (a base, not an app)
-- [ ] **5. Spec-compliant MCP** (server + client) for ecosystem interop.
-- [ ] **6. 20-line "build your own agent" SDK** + per-layer docs.
+- [x] **5. Spec-compliant MCP** (server + client) for ecosystem interop.
+      `src/mcp/protocol.ts` — JSON-RPC 2.0 server (initialize/tools/list/tools/call/ping)
+      at `POST /mcp`, hand-written (no SDK, stays lean). `src/mcp/client.ts` — stdio
+      client (`connectMcpServer`) that spawns any MCP server, discovers its tools, and
+      registers them as category `external_tool` (gated for untrusted callers).
+      THE MOAT APPLIES TO MCP: every `tools/call` routes through `router.call()`.
+      TESTED LIVE: initialize + tools/list ok; read_file succeeds; delete_file BLOCKED
+      over MCP by the circuit breaker (isError:true). Added `external_tool` category.
+- [x] **6. 20-line "build your own agent" SDK** + per-layer docs.
+      `src/kernel.ts` — `createKernel()` + `defineTool()` + `kernel.run()`. Wires
+      router+authority+audit+guardrails+sandbox into one secure facade; `run()` is a
+      minimal tool-calling loop that gates interactively then executes through the
+      router (audit+guardrail+sandbox). Unattended-safe (approvals denied by default).
+      `SDK.md` (quickstart + per-layer docs + API) and `examples/agent.ts` (runnable).
+      TESTED LIVE: agent looped add→"42" (1 toolCall); untrusted circuit-breaker blocked.
+      Fixed a strip-types blocker (parameter property in client.ts) + lazy audit-DB init.
 - [ ] **7. Memory tier** -> sqlite-vec (embedded) + Ollama embeddings (local).
 
 ## MOVE 3 - keep the validated wants first-class

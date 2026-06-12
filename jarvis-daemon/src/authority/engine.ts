@@ -28,7 +28,8 @@ export type ActionCategory =
   | "run_code"
   | "web_browse"
   | "calendar_write"
-  | "agent_spawn";
+  | "agent_spawn"
+  | "external_tool"; // tools imported from an external MCP server (unknown blast radius)
 
 // These ALWAYS require explicit user confirmation regardless of mode.
 // A prompt cannot bypass these. Only Settings can.
