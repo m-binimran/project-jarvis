@@ -31,6 +31,7 @@ import { registerGoogleWorkspace } from "./mcp/connectors/google-workspace.ts";
 import { buildServer } from "./server.ts";
 import { startSlack } from "./slack/bot.ts";
 import { getAuditTrail } from "./authority/audit.ts";
+import { AuthorityEngine } from "./authority/engine.ts";
 import { serve } from "@hono/node-server";
 
 async function boot() {
@@ -63,6 +64,10 @@ async function boot() {
   // 5. MCP
   console.log("[boot] Building MCP router...");
   const mcpRouter = buildDefaultRouter();
+  // Shared authority engine — makes the MCP router a secure chokepoint, and the
+  // orchestrator uses the SAME engine so a mode change applies everywhere at once.
+  const authority = new AuthorityEngine("productive");
+  mcpRouter.setAuthority(authority);
   await registerGoogleWorkspace(mcpRouter);  // adds Gmail + Calendar tools if OAuth tokens exist
   const tools = mcpRouter.listTools();
   console.log(`[boot] MCP tools: ${tools.map(t => t.name).join(", ")}`);
@@ -92,7 +97,7 @@ async function boot() {
 
   // 6. Orchestrator — pass live MCP router so agents have real tools
   console.log("[boot] Booting orchestrator...");
-  const orchestrator = new Orchestrator(llm);
+  const orchestrator = new Orchestrator(llm, authority);
 
   const personalDept = buildPersonalDepartment(mcpRouter);
   orchestrator.registerDepartment(personalDept);

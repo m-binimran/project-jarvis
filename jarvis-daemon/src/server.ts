@@ -55,6 +55,8 @@ import { setAnnotations, getAnnotations, clearAnnotations, type Shape } from "./
 import { runGuide, requestGuide, takePendingGuide, submitCapture, getGuideResult } from "./guide.ts";
 import { beginWork, endWork, isBusy } from "./activity.ts";
 import { startLoop, stopLoop, getLoop, listLoops } from "./agents/loop.ts";
+import { isDryRun, setDryRun } from "./guardrails.ts";
+import { isShellEnabled, dockerAvailable } from "./sandbox.ts";
 import { configureProviders } from "./config/loader.ts";
 import { startSlack, refreshAgentApps } from "./slack/bot.ts";
 import { preTaskCheck } from "./agents/pre-task.ts";
@@ -293,6 +295,19 @@ export function buildServer(deps: {
     return loop ? c.json(loop) : c.json({ error: "loop not found" }, 404);
   });
   app.post("/api/loop/:id/stop", c => c.json({ stopped: stopLoop(c.req.param("id")) }));
+
+  // ── Kernel controls — guardrail status + dry-run toggle ────────────────────
+  app.get("/api/kernel/status", c => c.json({
+    dryRun: isDryRun(),
+    shellEnabled: isShellEnabled(),
+    dockerAvailable: dockerAvailable(),
+  }));
+  const dryRunSchema = z.object({ on: z.boolean() });
+  app.post("/api/kernel/dryrun", zValidator("json", dryRunSchema), c => {
+    const { on } = c.req.valid("json") as { on: boolean };
+    setDryRun(on);
+    return c.json({ dryRun: isDryRun() });
+  });
 
   // ── Agents ───────────────────────────────────────────────────────────────
 

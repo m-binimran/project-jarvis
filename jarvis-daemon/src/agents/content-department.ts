@@ -30,7 +30,7 @@ function mcpTool(
     name,
     description,
     category,
-    run: (params) => router.call(name, params),
+    run: (params) => router.call(name, params, { trusted: true }),
   };
 }
 

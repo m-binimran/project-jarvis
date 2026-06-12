@@ -19,8 +19,10 @@
  *   - Custom user connectors
  */
 
-import type { ActionCategory } from "../authority/engine.ts";
+import type { ActionCategory, AuthorityEngine } from "../authority/engine.ts";
 import { checkCode } from "../authority/firewall.ts";
+import { getAuditTrail } from "../authority/audit.ts";
+import { isDryRun, isMutating, rateLimitOk, isFileTool, pathAllowed } from "../guardrails.ts";
 
 export interface MCPTool {
   name: string;
@@ -40,6 +42,13 @@ export interface MCPConnector {
 export class MCPRouter {
   private connectors = new Map<string, MCPConnector>();
   private toolIndex = new Map<string, MCPTool>();
+  private authority: AuthorityEngine | null = null;
+  private audit = getAuditTrail();
+
+  /** Wire the authority engine so the router becomes the secure chokepoint. */
+  setAuthority(authority: AuthorityEngine): void {
+    this.authority = authority;
+  }
 
   register(connector: MCPConnector): void {
     this.connectors.set(connector.id, connector);
@@ -58,12 +67,47 @@ export class MCPRouter {
     this.connectors.delete(connectorId);
   }
 
-  async call(toolName: string, params: Record<string, unknown>): Promise<unknown> {
+  /**
+   * Run a tool — the kernel's SECURE CHOKEPOINT. Every call is audited; external
+   * (untrusted) callers are authority-gated here, so a tool cannot be invoked via
+   * the direct API without passing the permission engine. Agent-internal calls
+   * pass { trusted: true } because the agent runner already gated them interactively.
+   * No-bypass invariant: there is no path to a tool that skips this method.
+   */
+  async call(
+    toolName: string,
+    params: Record<string, unknown>,
+    opts: { trusted?: boolean } = {}
+  ): Promise<unknown> {
     const tool = this.toolIndex.get(toolName);
     if (!tool) throw new Error(`MCP tool not found: ${toolName}`);
 
-    // CodeShield — scan any code/shell execution before it runs (Decision 10b).
-    // This is the single chokepoint for all tool calls, so the firewall sits here.
+    // Authority gate — for untrusted (direct-API / unattended) callers only.
+    // Anything denied, or that needs human approval, cannot run without a human.
+    if (this.authority && !opts.trusted) {
+      const decision = this.authority.check(tool.category);
+      this.audit.log({ action: "permission_check", payload: { tool: toolName, category: tool.category, decision } });
+      if (!decision.allowed || decision.requiresApproval) {
+        this.audit.log({ action: "permission_denied", outcome: "blocked", payload: { tool: toolName, reason: decision.reason } });
+        throw new Error(`[AUTHORITY] '${toolName}' (${tool.category}) blocked — ${decision.reason}. Not permitted via the direct API without approval.`);
+      }
+    }
+
+    // Guardrails — rate limit, path allowlist, dry-run (the kernel safety net).
+    if (!rateLimitOk(toolName)) {
+      this.audit.log({ action: "rate_limit_hit", payload: { tool: toolName } });
+      throw new Error(`[GUARDRAIL] Rate limit exceeded for '${toolName}' — slow down.`);
+    }
+    if (isFileTool(toolName) && typeof params.path === "string" && !pathAllowed(params.path)) {
+      this.audit.log({ action: "permission_denied", outcome: "blocked", payload: { tool: toolName, reason: "path not allowlisted" } });
+      throw new Error(`[GUARDRAIL] Path not allowed by the allowlist: ${params.path}`);
+    }
+    if (isDryRun() && isMutating(tool.category)) {
+      this.audit.log({ action: "tool_call", payload: { tool: toolName, dryRun: true } });
+      return { dryRun: true, wouldRun: toolName, category: tool.category, params };
+    }
+
+    // CodeShield — scan any code/shell execution before it runs (applies to ALL callers).
     if (tool.category === "run_code") {
       const command = [params.command, ...(Array.isArray(params.args) ? params.args : []), params.code]
         .filter(v => typeof v === "string" && v.length > 0)
@@ -79,7 +123,16 @@ export class MCPRouter {
       }
     }
 
-    return tool.handler(params);
+    // Audit every invocation — the no-bypass guarantee.
+    this.audit.log({ action: "tool_call", payload: { tool: toolName, trusted: !!opts.trusted } });
+    try {
+      const result = await tool.handler(params);
+      this.audit.log({ action: "tool_result", payload: { tool: toolName, success: true } });
+      return result;
+    } catch (err) {
+      this.audit.log({ action: "tool_result", outcome: "failure", payload: { tool: toolName, success: false, error: String(err) } });
+      throw err;
+    }
   }
 
   getTool(name: string): MCPTool | null {
@@ -102,7 +155,7 @@ export class MCPRouter {
 // ── Built-in V1 Connectors ────────────────────────────────────────────────
 
 import { readFileSync, writeFileSync, appendFileSync, readdirSync, unlinkSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { runInSandbox, isShellEnabled } from "../sandbox.ts";
 
 export const filesystemConnector: MCPConnector = {
   id: "filesystem",
@@ -214,27 +267,24 @@ export const screenConnector: MCPConnector = {
 export const execConnector: MCPConnector = {
   id: "exec",
   name: "Shell Executor",
-  description: "Run shell commands (requires user approval)",
+  description: "Run shell commands inside a Docker sandbox (off by default; opt-in)",
   tools: [
     {
       name: "run_shell",
-      description: "Run a shell command and return output",
+      description: "Run a shell command in an isolated Docker sandbox (no network, cpu/mem/time limits). Disabled by default.",
       category: "run_code",
       inputSchema: {
         command: { type: "string" },
         args: { type: "array", items: { type: "string" } },
       },
       async handler({ command, args = [] }) {
-        const result = spawnSync(
-          String(command),
-          (args as string[]).map(String),
-          { encoding: "utf-8", timeout: 30_000 }
-        );
-        return {
-          stdout: result.stdout,
-          stderr: result.stderr,
-          exitCode: result.status,
-        };
+        // Shell is OFF by default - opt-in only, and only ever inside the sandbox.
+        if (!isShellEnabled()) {
+          throw new Error("[SANDBOX] Shell execution is disabled by default. Enable it explicitly (setShellEnabled / JARVIS_ENABLE_SHELL=1); it only ever runs inside a Docker sandbox.");
+        }
+        const res = runInSandbox(String(command), (args as string[]).map(String));
+        if (res.error) throw new Error(`[SANDBOX] ${res.error}`);
+        return { stdout: res.stdout, stderr: res.stderr, exitCode: res.exitCode, sandboxed: true };
       },
     },
   ],
