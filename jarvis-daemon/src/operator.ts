@@ -17,6 +17,7 @@
 
 import { getAuditTrail } from "./authority/audit.ts";
 import { generateId } from "./vault/schema.ts";
+import { setAnnotations, clearAnnotations } from "./annotations.ts";
 
 // ── Action space (mirrors UI-TARS; coordinates are 0..1 fractions of the screen) ─
 
@@ -118,6 +119,25 @@ export function describeAction(a: OperatorAction): string {
     case "wait": return `Wait`;
     case "finished": return `Finish: ${a.text.slice(0, 80)}`;
   }
+}
+
+/** Where on screen an action points (for the on-screen preview), or null. */
+function actionCoords(a: OperatorAction): { x: number; y: number } | null {
+  if (a.type === "click" || a.type === "double_click" || a.type === "right_click" || a.type === "scroll" || a.type === "drag")
+    return { x: a.x, y: a.y };
+  return null;
+}
+
+/** Draw the PROPOSED action on screen (amber) so the user sees it before approving. */
+function drawProposed(a: OperatorAction): void {
+  const amber = "#FFB020";
+  if (a.type === "drag") {
+    setAnnotations([{ type: "arrow", x: a.x, y: a.y, x2: a.x2, y2: a.y2, color: amber, text: describeAction(a) }], 0);
+    return;
+  }
+  const c = actionCoords(a);
+  if (c) setAnnotations([{ type: "circle", x: c.x, y: c.y, w: 0.035, color: amber, text: describeAction(a) }], 0);
+  else setAnnotations([{ type: "label", x: 0.5, y: 0.08, color: amber, text: describeAction(a) }], 0);
 }
 
 // ── UI-TARS computer-use prompt + call ───────────────────────────────────────
@@ -271,6 +291,7 @@ export async function observeFrame(id: string, dataUrl: string): Promise<Session
   // GATE: computer_use is a circuit breaker — propose, then wait for a human OK.
   s.proposed = stepParsed;
   s.status = "awaiting_approval";
+  drawProposed(stepParsed.action); // show the user EXACTLY what it wants to do
   audit.log({
     action: "permission_check", taskId: id,
     payload: { category: "computer_use", action: describeAction(stepParsed.action), requiresApproval: true },
@@ -285,6 +306,7 @@ export function approveStep(id: string): Session {
   if (s.status !== "awaiting_approval" || !s.proposed) return s;
   audit.log({ action: "permission_granted", taskId: id, payload: { action: describeAction(s.proposed.action), approvedBy: "user" } });
   audit.log({ action: "tool_call", taskId: id, payload: { tool: "computer_use", action: s.proposed.action } });
+  clearAnnotations(); // it's approved — clear the preview marker
   s.status = "ready_to_act";
   return s;
 }
@@ -294,6 +316,7 @@ export function rejectStep(id: string): Session {
   const s = sessions.get(id);
   if (!s) throw new Error("Unknown operator session");
   audit.log({ action: "permission_denied", taskId: id, outcome: "blocked", payload: { action: s.proposed ? describeAction(s.proposed.action) : "?" } });
+  clearAnnotations();
   s.status = "stopped"; s.result = "You declined the action.";
   return s;
 }
@@ -301,9 +324,18 @@ export function rejectStep(id: string): Session {
 export function stopOperator(id: string): Session | null {
   const s = sessions.get(id);
   if (!s) return null;
+  clearAnnotations();
   s.status = "stopped"; s.result = s.result || "Stopped.";
   audit.log({ action: "agent_loop_end", taskId: id, outcome: "blocked", payload: { reason: "user_stop" } });
   return s;
+}
+
+/** The session currently waiting for a human OK (for a UI to poll), or null. */
+export function getActiveOperator(): ReturnType<typeof getOperator> {
+  for (const s of sessions.values()) {
+    if (s.status === "awaiting_approval" && s.proposed) return getOperator(s.id);
+  }
+  return null;
 }
 
 /** UI-facing view of a session (what it wants to do, where it is). */

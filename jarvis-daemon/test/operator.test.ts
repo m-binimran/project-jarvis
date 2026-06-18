@@ -4,9 +4,10 @@ import assert from "node:assert/strict";
 import {
   parseUiTarsStep, describeAction,
   startOperator, observeFrame, approveStep, rejectStep, nextForOverlay, getOperator,
-  __setDecideForTest, type OperatorAction,
+  getActiveOperator, __setDecideForTest, type OperatorAction,
 } from "../src/operator.ts";
 import { CIRCUIT_BREAKERS, AuthorityEngine } from "../src/authority/engine.ts";
+import { getAnnotations } from "../src/annotations.ts";
 
 const SHOT = "data:image/png;base64,AAAA";
 const approx = (a: number, b: number) => Math.abs(a - b) <= 0.001;
@@ -77,4 +78,19 @@ test("finished() ends the session", async () => {
 
 test("describeAction is human-readable", () => {
   assert.match(describeAction({ type: "click", x: 0.5, y: 0.5 }), /Click at 50%, 50%/);
+});
+
+test("proposing draws the target on screen + surfaces it for the UI; reject clears it", async () => {
+  __setDecideForTest(async () => "Thought: Click here.\nAction: click(start_box='(300,400)')");
+  const { id } = startOperator("draw test");
+  await observeFrame(id, "data:image/png;base64,AAAA");
+  const shapes = getAnnotations().shapes;
+  assert.ok(
+    shapes.some(s => s.type === "circle" && Math.abs(s.x - 0.3) < 0.01 && Math.abs(s.y - 0.4) < 0.01),
+    `expected a circle near (0.3,0.4), got ${JSON.stringify(shapes)}`,
+  );
+  assert.ok(getActiveOperator(), "the awaiting action should be visible to a UI");
+  rejectStep(id);
+  assert.equal(getAnnotations().shapes.length, 0, "reject clears the on-screen preview");
+  assert.equal(getOperator(id)!.status, "stopped");
 });

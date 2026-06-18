@@ -53,7 +53,8 @@ import { checkAlignment, filterOutput } from "./authority/firewall.ts";
 import { synthesizeSpeech } from "./llm/edge-tts.ts";
 import { setAnnotations, getAnnotations, clearAnnotations, type Shape } from "./annotations.ts";
 import { runGuide, requestGuide, takePendingGuide, submitCapture, getGuideResult } from "./guide.ts";
-import { startOperator, nextForOverlay, observeFrame, approveStep, rejectStep, stopOperator, getOperator } from "./operator.ts";
+import { startOperator, nextForOverlay, observeFrame, approveStep, rejectStep, stopOperator, getOperator, getActiveOperator } from "./operator.ts";
+import { OPERATOR_UI } from "./operator-ui.ts";
 import { beginWork, endWork, isBusy } from "./activity.ts";
 import { startLoop, stopLoop, getLoop, listLoops } from "./agents/loop.ts";
 import { isDryRun, setDryRun } from "./guardrails.ts";
@@ -197,6 +198,12 @@ export function buildServer(deps: {
 
   // Overlay polls: returns { kind: "shot" | "act" | "idle", id?, action? }.
   app.get("/api/operator/next", c => c.json(nextForOverlay()));
+
+  // UI polls this for the action currently awaiting a human OK (or null).
+  app.get("/api/operator/active", c => c.json({ active: getActiveOperator() }));
+
+  // The human-in-the-loop control panel (self-contained page).
+  app.get("/operator", c => c.html(OPERATOR_UI));
 
   // Overlay posts a fresh screenshot (after a shot, or after executing an action).
   const opFrameSchema = z.object({ id: z.string().min(1), screenshot: z.string().min(1).max(MAX_SHOT) });
