@@ -53,6 +53,7 @@ import { checkAlignment, filterOutput } from "./authority/firewall.ts";
 import { synthesizeSpeech } from "./llm/edge-tts.ts";
 import { setAnnotations, getAnnotations, clearAnnotations, type Shape } from "./annotations.ts";
 import { runGuide, requestGuide, takePendingGuide, submitCapture, getGuideResult } from "./guide.ts";
+import { startOperator, nextForOverlay, observeFrame, approveStep, rejectStep, stopOperator, getOperator } from "./operator.ts";
 import { beginWork, endWork, isBusy } from "./activity.ts";
 import { startLoop, stopLoop, getLoop, listLoops } from "./agents/loop.ts";
 import { isDryRun, setDryRun } from "./guardrails.ts";
@@ -183,6 +184,36 @@ export function buildServer(deps: {
     const result = getGuideResult(c.req.param("id"));
     return c.json({ ready: !!result, result });
   });
+
+  // ── Computer-use operator — JARVIS actually clicks/types, every step gated ──
+  // Loop: start → overlay GET /next (shot|act) → POST /frame(screenshot) → daemon
+  // proposes the next action (awaiting_approval) → human POST /:id/approve|reject →
+  // approved action surfaces via /next → overlay executes → /frame → repeat.
+  const opStartSchema = z.object({ task: z.string().min(1).max(2000), maxSteps: z.number().int().positive().max(30).optional() });
+  app.post("/api/operator/start", zValidator("json", opStartSchema), c => {
+    const { task, maxSteps } = c.req.valid("json") as { task: string; maxSteps?: number };
+    return c.json(startOperator(task, maxSteps));
+  });
+
+  // Overlay polls: returns { kind: "shot" | "act" | "idle", id?, action? }.
+  app.get("/api/operator/next", c => c.json(nextForOverlay()));
+
+  // Overlay posts a fresh screenshot (after a shot, or after executing an action).
+  const opFrameSchema = z.object({ id: z.string().min(1), screenshot: z.string().min(1).max(MAX_SHOT) });
+  app.post("/api/operator/frame", zValidator("json", opFrameSchema), async c => {
+    const { id, screenshot } = c.req.valid("json") as { id: string; screenshot: string };
+    try { return c.json(await observeFrame(id, screenshot)); }
+    catch (e) { return c.json({ error: String(e instanceof Error ? e.message : e) }, 400); }
+  });
+
+  // UI: inspect a session, then approve / reject the proposed action, or stop.
+  app.get("/api/operator/:id", c => {
+    const s = getOperator(c.req.param("id"));
+    return s ? c.json(s) : c.json({ error: "not found" }, 404);
+  });
+  app.post("/api/operator/:id/approve", c => c.json(approveStep(c.req.param("id"))));
+  app.post("/api/operator/:id/reject", c => c.json(rejectStep(c.req.param("id"))));
+  app.post("/api/operator/:id/stop", c => { const s = stopOperator(c.req.param("id")); return s ? c.json(s) : c.json({ error: "not found" }, 404); });
 
   // ── Chat ─────────────────────────────────────────────────────────────────
 

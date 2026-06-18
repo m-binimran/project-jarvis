@@ -29,7 +29,8 @@ export type ActionCategory =
   | "web_browse"
   | "calendar_write"
   | "agent_spawn"
-  | "external_tool"; // tools imported from an external MCP server (unknown blast radius)
+  | "external_tool" // tools imported from an external MCP server (unknown blast radius)
+  | "computer_use"; // moving the mouse / typing on the real OS (clicks anything) — highest risk
 
 // These ALWAYS require explicit user confirmation regardless of mode.
 // A prompt cannot bypass these. Only Settings can.
@@ -43,6 +44,7 @@ export const CIRCUIT_BREAKERS = new Set<ActionCategory>([
   "share_data_external",
   "install_software",
   "system_access",
+  "computer_use", // every real click/keystroke needs a human OK — no silent autopilot
 ]);
 
 export type AuthDecision = {

@@ -15,7 +15,7 @@
 const MUTATING = new Set<string>([
   "write_file", "delete_file", "send_email", "send_message", "post_social",
   "make_purchase", "calendar_write", "run_code", "install_software",
-  "system_access", "share_data_external", "access_credentials",
+  "system_access", "share_data_external", "access_credentials", "computer_use",
 ]);
 export function isMutating(category: string): boolean {
   return MUTATING.has(category);

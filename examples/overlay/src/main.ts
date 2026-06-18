@@ -5,6 +5,7 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import started from 'electron-squirrel-startup';
+import { startOperatorPoller } from './operator-executor';
 
 if (started) app.quit();
 
@@ -393,7 +394,11 @@ function startGuidePoller(): void {
 }
 
 // ─── App lifecycle ─────────────────────────────────────────────────────────
-app.whenReady().then(() => { createWindow(); ensureAnnotateWindow(); startGuidePoller(); });
+app.whenReady().then(() => {
+  createWindow(); ensureAnnotateWindow(); startGuidePoller();
+  // Computer-use "hands" — only activates if the native input lib is installed.
+  void startOperatorPoller(daemonRequest, captureScreenDataUrl);
+});
 
 app.on('window-all-closed', () => {
   globalShortcut.unregisterAll();
