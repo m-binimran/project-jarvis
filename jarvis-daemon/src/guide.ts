@@ -49,7 +49,11 @@ export interface GuideResult extends GuideTarget {
 type VisionBackend =
   | { kind: "google"; key: string; model: string }
   | { kind: "openai"; key: string; model: string }
-  | { kind: "nvidia"; key: string; model: string };
+  | { kind: "nvidia"; key: string; model: string }
+  // UI-TARS: a VLM purpose-trained for GUI grounding (screenshot + task -> exact
+  // click coordinates). Far more precise than general VLMs. Opt-in via env (it
+  // needs an endpoint serving the model), and tried FIRST when configured.
+  | { kind: "uitars"; key: string; model: string; baseUrl: string };
 
 /**
  * Every available vision backend, in free-first preference order. locateTarget
@@ -75,6 +79,18 @@ function isRateLimited(msg: string): boolean {
 
 async function listVisionBackends(): Promise<VisionBackend[]> {
   const all: VisionBackend[] = [];
+  // UI-TARS first when configured — it's the most accurate for "where do I click".
+  // Enabled by pointing JARVIS_UITARS_URL at an endpoint serving the model
+  // (self-hosted vLLM, volcengine, HF TGI, …). Key optional (local endpoints ignore it).
+  const uitarsUrl = process.env.JARVIS_UITARS_URL;
+  if (uitarsUrl) {
+    all.push({
+      kind: "uitars",
+      baseUrl: uitarsUrl.replace(/\/+$/, ""),
+      key: process.env.JARVIS_UITARS_KEY ?? "EMPTY",
+      model: process.env.JARVIS_UITARS_MODEL ?? "ui-tars-1.5-7b",
+    });
+  }
   const google = await getProviderKey("google");
   if (google) all.push({ kind: "google", key: google, model: "gemini-2.0-flash" });
   const nvidia = await getProviderKey("nvidia");
@@ -136,6 +152,55 @@ function normalizeTarget(raw: Record<string, unknown>): GuideTarget {
   };
 }
 
+// ── UI-TARS grounding (precise GUI coordinates) ──────────────────────────────
+
+// UI-TARS is fine-tuned to emit its own action grammar, NOT arbitrary JSON, so it
+// gets its own prompt + parser. Coordinates come back in a 0..1000 space.
+const UITARS_PROMPT =
+  "You are a GUI grounding agent. You are given a screenshot of the user's screen " +
+  "and a task. Identify the single UI element to interact with next to make progress, " +
+  "and output the action.\n\n" +
+  "Output EXACTLY this format and nothing else:\n" +
+  "Thought: <one short sentence telling the user what to do>\n" +
+  "Action: click(start_box='(x,y)')\n\n" +
+  "x and y are integers in a 0-1000 coordinate space where (0,0) is the top-left of " +
+  "the screen and (1000,1000) is the bottom-right.";
+
+/**
+ * Parse a UI-TARS reply ("Thought: …\nAction: click(start_box='(x,y)')") into a
+ * GuideTarget. Handles the point/box variants and the <|box_start|> markers, and
+ * converts the 0..1000 coordinates to JARVIS's 0..1 fractions. Returns null if no
+ * usable action/coordinate is present (so the cascade falls through to the next backend).
+ */
+export function parseUiTarsAction(text: string): GuideTarget | null {
+  if (!text) return null;
+  const thoughtM = text.match(/Thought:\s*([\s\S]+?)(?=\n?\s*Action[:：]|$)/i);
+  const narration = thoughtM ? thoughtM[1].trim().replace(/\s+/g, " ").slice(0, 240) : "";
+
+  // Coordinates live in the Action part — strip the box markers / <point> tags first.
+  const actionPart = (text.split(/Action[:：]/i).pop() ?? text)
+    .replace(/<\|box_start\|>|<\|box_end\|>/g, "")
+    .replace(/<\/?point>/g, " ");
+  const m = actionPart.match(/\(?\s*(\d{1,4})[\s,]+(\d{1,4})(?:[\s,]+(\d{1,4})[\s,]+(\d{1,4}))?\s*\)?/);
+  if (!m) return null;
+
+  const nums = [m[1], m[2], m[3], m[4]].filter(Boolean).map(Number);
+  const cx = nums.length >= 4 ? (nums[0] + nums[2]) / 2 : nums[0];
+  const cy = nums.length >= 4 ? (nums[1] + nums[3]) / 2 : nums[1];
+  const clickX = clamp01(cx / 1000), clickY = clamp01(cy / 1000);
+
+  // Grounding gives a point, not a box — synthesise a small "look here" area around it.
+  const w = 0.12, h = 0.06;
+  const verb = actionPart.match(/(\w+)\s*\(/);
+  return {
+    found: true,
+    x: clamp01(clickX - w / 2), y: clamp01(clickY - h / 2), w, h,
+    clickX, clickY,
+    label: verb ? verb[1] : "",
+    narration: narration || "Here.",
+  };
+}
+
 // ── Vision calls ───────────────────────────────────────────────────────────
 
 /** Google Gemini generateContent with an inline image (free tier supports vision). */
@@ -161,7 +226,8 @@ async function locateGoogle(b: VisionBackend & { kind: "google" }, task: string,
 
 /** OpenAI-compatible vision (OpenAI gpt-4o, NVIDIA VLMs) via chat/completions image_url. */
 async function locateOpenAICompatible(
-  baseUrl: string, key: string, model: string, task: string, dataUrl: string
+  baseUrl: string, key: string, model: string, task: string, dataUrl: string,
+  systemPrompt: string = SYSTEM_PROMPT
 ): Promise<string> {
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
@@ -171,7 +237,7 @@ async function locateOpenAICompatible(
       temperature: 0,
       max_tokens: 400,
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: systemPrompt },
         { role: "user", content: [
           { type: "text", text: `Task: ${task}` },
           { type: "image_url", image_url: { url: dataUrl } },
@@ -186,6 +252,7 @@ async function locateOpenAICompatible(
 
 async function callBackend(b: VisionBackend, task: string, dataUrl: string): Promise<string> {
   if (b.kind === "google") return locateGoogle(b, task, dataUrl);
+  if (b.kind === "uitars") return locateOpenAICompatible(b.baseUrl, b.key, b.model, task, dataUrl, UITARS_PROMPT);
   if (b.kind === "nvidia") return locateOpenAICompatible("https://integrate.api.nvidia.com/v1", b.key, b.model, task, dataUrl);
   return locateOpenAICompatible("https://api.openai.com/v1", b.key, b.model, task, dataUrl);
 }
@@ -208,6 +275,16 @@ export async function locateTarget(task: string, dataUrl: string): Promise<Guide
   for (const b of backends) {
     try {
       const text = await callBackend(b, task, dataUrl);
+      // UI-TARS speaks its own action grammar; everyone else returns our JSON schema.
+      if (b.kind === "uitars") {
+        const target = parseUiTarsAction(text);
+        if (!target) {
+          gotUnparseable = true;
+          errors.push(`uitars: no action parsed`);
+          continue;
+        }
+        return target;
+      }
       const raw = extractJson(text);
       if (!raw) {
         // The model replied but not with JSON — let the next backend try.
