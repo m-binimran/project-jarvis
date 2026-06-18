@@ -17,6 +17,7 @@
 import { initDb } from "./vault/schema.ts";
 import { loadConfig, buildLLMManager } from "./config/loader.ts";
 import { Orchestrator } from "./agents/orchestrator.ts";
+import { resumeLoops } from "./agents/loop.ts";
 import { buildPersonalDepartment } from "./agents/departments.ts";
 import { buildContentDepartment } from "./agents/content-department.ts";
 import { buildEnterpriseDepartments } from "./agents/enterprise-department.ts";
@@ -184,6 +185,10 @@ async function boot() {
 
   // 11. Slack — connect if bot+app tokens are configured (non-blocking; see SLACK-SETUP.md)
   startSlack(orchestrator).then(ok => { if (ok) console.log("  ✓ Slack: connected — DM or @mention JARVIS"); }).catch(() => {});
+
+  // 12. Resume any autonomous/overnight loops interrupted by the last shutdown.
+  const resumed = resumeLoops(orchestrator);
+  if (resumed > 0) console.log(`  ✓ Resumed ${resumed} interrupted loop(s)`);
 
   // Graceful shutdown
   process.on("SIGINT", () => {

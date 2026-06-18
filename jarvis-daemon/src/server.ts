@@ -321,9 +321,11 @@ export function buildServer(deps: {
     maxSteps: z.number().int().positive().optional(),
     tokenBudget: z.number().int().positive().optional(),
     agentId: z.string().optional(),
+    mode: z.enum(["normal", "overnight"]).optional(),
+    maxMinutes: z.number().int().positive().max(1440).optional(), // overnight time budget (<=24h)
   });
   app.post("/api/loop/start", zValidator("json", loopSchema), c => {
-    const body = c.req.valid("json") as { goal: string; maxSteps?: number; tokenBudget?: number; agentId?: string };
+    const body = c.req.valid("json") as { goal: string; maxSteps?: number; tokenBudget?: number; agentId?: string; mode?: "normal" | "overnight"; maxMinutes?: number };
     const res = startLoop(orchestrator, body.goal, body);
     if ("error" in res) return c.json(res, 429);
     return c.json(res);
