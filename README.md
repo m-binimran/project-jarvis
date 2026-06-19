@@ -49,7 +49,7 @@ Run it: `node --experimental-strip-types jarvis-daemon/examples/agent.ts`.
 
 - 🔒 **No-bypass authority + audit chokepoint** — every tool call goes through one
   gate. Untrusted/direct-API callers are permission-checked and audited; circuit
-  breakers (delete, send, purchase, credentials…) can never be prompted away.
+  breakers (delete, send, purchase, credentials, computer-use…) can never be prompted away.
 - 📦 **Sandboxed execution by default** — code/shell runs only inside Docker (no
   network, read-only rootfs, cpu/mem/pids limits). Refuses if Docker is absent —
   no silent host fallback. Shell is off by default.
@@ -59,8 +59,9 @@ Run it: `node --experimental-strip-types jarvis-daemon/examples/agent.ts`.
   JSON-RPC (`POST /mcp`), and import any MCP server's tools — all still gated.
 - 🧠 **Local semantic memory** — embedded in your SQLite vault; local Ollama
   embeddings with a keyword fallback. Nothing leaves the machine.
-- 🗣️ **Free voice + bounded autonomous loops** — offline Vosk STT + Edge TTS, and
-  goal-seeking loops with hard step/token caps that deny risky actions unattended.
+- 🗣️ **Free voice + autonomous loops (incl. overnight)** — offline Vosk STT + Edge
+  TTS, and goal-seeking loops with hard step/token/time caps that deny risky actions
+  unattended. Overnight loops are checkpointed to the vault and resume after a restart.
 - 🏠 **Local-first, BYO key, zero telemetry** — single local vault, your keys in
   the OS keychain, no analytics, no phone-home. [Audited.](jarvis-daemon/PRIVACY.md)
 
@@ -71,8 +72,13 @@ clients you can swap out:
 
 - 🔮 **The Orb** — a heads-up command center you talk to.
 - 📌 **The Pill** — a Dynamic-Island-style always-on launcher with live status.
-- 👁️ **Screen guidance** — "show me where to click for X" and JARVIS looks at your
-  screen (vision model) and draws the answer on it.
+- 👁️ **Screen guidance** — "show me where to click for X"; JARVIS looks at your
+  screen and draws the answer on it. Uses **UI-TARS** for precise GUI grounding when
+  configured (`JARVIS_UITARS_URL`), falling back to general vision models.
+- 🖱️ **Computer-use operator** — JARVIS can actually click/type for you, but every
+  action is gated: it shows the target on your screen and you approve each step
+  (`computer_use` is a circuit breaker, so nothing runs unattended). Control panel
+  at `/operator`; the "hands" use a native input lib in the overlay (opt-in).
 - 🧑‍💼 **Multi-agent workforce** — a CEO agent delegates to leads and specialists.
 - 💬 **Slack** — DM or @mention to run the workforce in a thread.
 
@@ -162,6 +168,11 @@ call hits the audit chain, the audit chain is tamper-evident (and detects forger
 guardrails (dry-run / rate limit / path allowlist) fire, inputs are validated, the
 MCP gate holds, and — where Docker is present — the sandbox really has no network
 and a read-only rootfs. (Sandbox tests auto-skip if Docker isn't installed.)
+
+The newer capabilities are covered too: the **computer-use operator** (every action
+parks for approval and never self-executes; `computer_use` is a circuit breaker in
+every mode), the **UI-TARS** coordinate parser, and **overnight loops** (checkpointed
+to the vault, resumed from where they left off, expired runs closed out). 60+ tests.
 
 ## Contributing
 
