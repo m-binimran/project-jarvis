@@ -17,6 +17,7 @@ import type { LLMManager } from "../llm/manager.ts";
 import type { LLMMessage } from "../llm/provider.ts";
 import { AuthorityEngine, type ActionCategory } from "../authority/engine.ts";
 import { getAuditTrail } from "../authority/audit.ts";
+import { guardToolResult } from "../authority/scanner.ts";
 import { AgentJournal } from "./journal.ts";
 import { RateLimiter, DEFAULT_LIMITS } from "./rate-limiter.ts";
 import { getDb, generateId, now } from "../vault/schema.ts";
@@ -428,8 +429,17 @@ export class AgentRunner {
             });
           }
 
+          // Tool output is UNTRUSTED — scan it for prompt-injection before it
+          // re-enters the model, and defang it if a pattern is found.
+          const guarded = guardToolResult(toolName, toolResult);
+          if (guarded.risk !== "safe") {
+            this.audit.log({
+              action: "injection_detected", agentId: this.agent.id, taskId,
+              payload: { tool: toolName, risk: guarded.risk, patterns: guarded.flaggedPatterns },
+            });
+          }
           messages.push({ role: "assistant", content: response });
-          messages.push({ role: "user", content: `TOOL_RESULT: ${JSON.stringify(toolResult)}` });
+          messages.push({ role: "user", content: `TOOL_RESULT: ${guarded.text}` });
           continue;
         }
 

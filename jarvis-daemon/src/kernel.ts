@@ -25,6 +25,7 @@
 import { MCPRouter, buildDefaultRouter, type MCPTool } from "./mcp/router.ts";
 import { AuthorityEngine, type ActionCategory, type PermissionMode } from "./authority/engine.ts";
 import { getAuditTrail, type AuditTrail } from "./authority/audit.ts";
+import { guardToolResult } from "./authority/scanner.ts";
 import { getDb, initDatabase } from "./vault/schema.ts";
 import { setDryRun, setAllowedPaths } from "./guardrails.ts";
 import { setShellEnabled } from "./sandbox.ts";
@@ -245,8 +246,13 @@ export class Kernel {
         catch (e) { toolResult = { error: String(e instanceof Error ? e.message : e) }; }
       }
 
+      // Scan untrusted tool output for prompt-injection before the model reads it.
+      const guarded = guardToolResult(call.name, toolResult);
+      if (guarded.risk !== "safe") {
+        this.audit.log({ action: "injection_detected", payload: { tool: call.name, risk: guarded.risk, patterns: guarded.flaggedPatterns } });
+      }
       messages.push({ role: "assistant", content: text });
-      messages.push({ role: "user", content: `TOOL_RESULT: ${JSON.stringify(toolResult)}` });
+      messages.push({ role: "user", content: `TOOL_RESULT: ${guarded.text}` });
     }
 
     return { output, turns, toolCalls };

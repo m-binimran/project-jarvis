@@ -38,7 +38,8 @@ export type AuditAction =
   | "agent_a2a_message"
   | "agent_loop_start"
   | "agent_loop_step"
-  | "agent_loop_end";
+  | "agent_loop_end"
+  | "injection_detected";
 
 export interface AuditEntry {
   id: string;
